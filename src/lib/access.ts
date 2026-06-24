@@ -65,9 +65,14 @@ export function requireAccess(): MiddlewareHandler<AppEnv> {
         audience: env.ACCESS_AUD, // Application Audience (AUD) tag
         // jose enforces exp/nbf automatically.
       });
+      // Human logins carry `email`; Access service tokens (used by the CLI / other
+      // headless clients) carry `common_name` instead. Accept either as the audit
+      // identity; deny only if neither is present.
       const email = typeof payload.email === 'string' ? payload.email : '';
-      if (!email) return deny(c); // a human operator must carry an email claim
-      c.set('adminEmail', email);
+      const commonName = typeof payload.common_name === 'string' ? payload.common_name : '';
+      const identity = email || commonName;
+      if (!identity) return deny(c);
+      c.set('adminEmail', identity);
       c.set('adminViaBypass', false);
       await next();
       return;

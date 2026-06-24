@@ -129,6 +129,16 @@ unauthenticated `*.workers.dev` origin.
 
 ---
 
+## CLI
+
+`@sqcode/conduit` is a terminal client for sending links from headless boxes — see
+[`cli/`](./cli). Authenticate once with a Cloudflare Access service token, then:
+
+```bash
+conduit push report.pdf --expires 24h   # upload + mint a single-use link (copied to clipboard)
+conduit pulls --watch                    # live download feed
+```
+
 ## Layout
 
 ```

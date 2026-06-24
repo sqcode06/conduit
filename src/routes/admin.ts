@@ -23,6 +23,11 @@ function clampInt(v: unknown, dflt: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+// GET /admin/api/whoami — identity check for the CLI (login / doctor).
+admin.get('/whoami', (c) =>
+  c.json({ ok: true, identity: c.get('adminEmail'), via_bypass: c.get('adminViaBypass') }),
+);
+
 // POST /admin/api/files — raw-bytes upload streamed into R2.
 admin.post('/files', async (c) => {
   const filename = sanitizeFilename(c.req.header('X-Filename'));

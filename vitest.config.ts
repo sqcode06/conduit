@@ -24,6 +24,8 @@ export default defineConfig({
     }),
   ],
   test: {
+    // Scope to the Worker's own tests (cli/ has its own vitest project).
+    include: ['test/**/*.test.ts'],
     setupFiles: ['./test/apply-migrations.ts'],
   },
 });

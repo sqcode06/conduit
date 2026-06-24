@@ -1,0 +1,57 @@
+{
+  "name": "@sqcode/conduit",
+  "version": "0.1.0",
+  "description": "Send single-use file links from your terminal — the CLI for CONDUIT.",
+  "license": "MIT",
+  "author": "sqcode",
+  "type": "module",
+  "bin": {
+    "conduit": "./dist/conduit.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/conduit.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.6.0",
+    "clipboardy": "^5.3.1",
+    "commander": "^15.0.0",
+    "env-paths": "^4.0.0",
+    "picocolors": "^1.1.1",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sqcode06/conduit.git",
+    "directory": "cli"
+  },
+  "homepage": "https://conduit.sqcode.dev",
+  "keywords": [
+    "cloudflare",
+    "file-transfer",
+    "cli",
+    "secure",
+    "single-use",
+    "share"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

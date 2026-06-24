@@ -6,6 +6,14 @@ import { readJson, waitFor } from './helpers';
 const API = 'https://conduit.test/admin/api';
 
 describe('admin API', () => {
+  it('whoami returns the verified identity', async () => {
+    const r = await SELF.fetch(`${API}/whoami`);
+    expect(r.status).toBe(200);
+    const who = await readJson<{ ok: boolean; identity: string }>(r);
+    expect(who.ok).toBe(true);
+    expect(who.identity).toBe('test@conduit.dev');
+  });
+
   it('uploads, lists, mints, downloads once, and logs the pull', async () => {
     const up = await SELF.fetch(`${API}/files`, {
       method: 'POST',
