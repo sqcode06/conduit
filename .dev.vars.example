@@ -1,0 +1,12 @@
+# Copy to .dev.vars for local `wrangler dev`. NEVER commit .dev.vars.
+# These are read only in development; the double-gate in src/lib/access.ts
+# (ENVIRONMENT !== "production") makes the bypass structurally dead in prod.
+
+# Skip Cloudflare Access locally and act as this operator identity.
+DEV_ADMIN_BYPASS="true"
+DEV_ADMIN_EMAIL="operator@sqcode.dev"
+
+# To instead exercise the REAL Access verification path locally, set
+# DEV_ADMIN_BYPASS="false" and provide valid Access values + a JWT header:
+# ACCESS_TEAM_DOMAIN="yourteam"
+# ACCESS_AUD="your-application-aud-tag"

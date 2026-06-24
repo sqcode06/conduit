@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="color-scheme" content="dark" />
+  <title>CONDUIT — control</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wordmark">
+      <span class="wordmark-glyph" aria-hidden="true">&#8631;</span>
+      <span class="wordmark-text">CON<span class="wordmark-mid">DU</span>IT</span>
+      <span class="wordmark-tag">// secure file conduit</span>
+    </div>
+    <div class="status" id="conn-status" title="Cloudflare Access session">
+      <span class="status-dot"></span><span class="mono">operator</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- LEFT: ingest + files -->
+    <section class="col col--main">
+      <div class="panel">
+        <div class="drop" id="drop" tabindex="0" role="button"
+             aria-label="Upload a file by dropping it here or pressing Enter">
+          <input type="file" id="file-input" hidden />
+          <div class="drop-mark" aria-hidden="true">&#8595;</div>
+          <p class="drop-title">Drop a file to distill into a link</p>
+          <p class="drop-sub mono dim">click or drop &middot; single PUT &middot; max 100&nbsp;MB</p>
+        </div>
+        <div class="upload-progress" id="upload-progress" hidden>
+          <div class="upload-bar" id="upload-bar">0%</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Files</h2>
+          <span class="mono dim panel-hint">name &middot; size &middot; age &middot; links</span>
+        </div>
+        <table class="ftable">
+          <thead>
+            <tr>
+              <th>Name</th><th>Size</th><th>Age</th><th>Links</th><th class="th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="files-body">
+            <tr><td class="empty" colspan="5">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RIGHT: recent pulls -->
+    <aside class="col col--side">
+      <div class="panel panel--pulls">
+        <div class="panel-head">
+          <h2>Recent pulls</h2>
+          <span class="live mono" title="Polling every 10s">&#9679; live</span>
+        </div>
+        <ul class="pulls" id="pulls-body">
+          <li class="empty">Loading…</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <!-- MINT MODAL -->
+  <dialog class="modal" id="mint">
+    <form id="mint-form" method="dialog" class="mint-form">
+      <header class="modal-head">
+        <h3>Mint link</h3>
+        <button type="button" class="x" id="mint-close" aria-label="Close">&times;</button>
+      </header>
+      <p class="mint-target mono">for <strong id="mint-fname">file</strong></p>
+
+      <label class="field">
+        <span>Expiry (TTL)</span>
+        <select id="mint-ttl">
+          <option value="1h">1 hour</option>
+          <option value="24h" selected>24 hours</option>
+          <option value="7d">7 days</option>
+          <option value="never">No expiry</option>
+        </select>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Max downloads</span>
+          <input id="mint-max" type="number" min="1" step="1" value="1" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span>Grace (sec)</span>
+          <input id="mint-grace" type="number" min="0" step="10" value="0" inputmode="numeric" />
+        </label>
+      </div>
+      <p class="hint mono dim">
+        Strict single-use by default (grace 0). Set a resume window in seconds to let a dropped or
+        large download finish without burning the link.
+      </p>
+
+      <footer class="modal-foot">
+        <button type="button" class="btn btn--ghost" id="mint-cancel"
+                onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn--accent" id="mint-submit">Mint link</button>
+      </footer>
+    </form>
+
+    <div id="mint-result" class="mint-result" hidden>
+      <header class="modal-head">
+        <h3>Link ready</h3>
+        <button type="button" class="x" onclick="this.closest('dialog').close()" aria-label="Close">&times;</button>
+      </header>
+      <p class="hint mono dim">Copy now — the token is shown once and never stored in the clear.</p>
+      <div class="url-row">
+        <input id="mint-url" class="mono" readonly spellcheck="false" />
+        <button type="button" class="btn btn--accent" id="mint-copy">Copy</button>
+      </div>
+      <p id="mint-meta" class="mono dim mint-meta"></p>
+      <footer class="modal-foot">
+        <button type="button" class="btn btn--ghost" id="mint-again">Mint another</button>
+        <button type="button" class="btn btn--accent" onclick="this.closest('dialog').close()">Done</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

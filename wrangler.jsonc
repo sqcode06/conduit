@@ -1,0 +1,73 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "conduit",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": [],
+
+  // Static admin UI (public/) is served at the edge. Only the two route families
+  // below invoke the Worker; everything else (/, /styles.css, /app.js) is a static
+  // asset. Keeping the array form is load-bearing: `run_worker_first: true` would
+  // make the Worker intercept the admin UI too and it would never load.
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    // Only the API and the download path invoke the Worker. The admin UI under
+    // /admin/ (non-/api) is a static asset gated by Cloudflare Access at the edge.
+    "run_worker_first": ["/d/*", "/admin/api/*"]
+  },
+
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "conduit-blobs" }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "conduit-meta",
+      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create_conduit-meta",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Dev defaults (apply to `wrangler dev`). Real Access values + the bypass live in
+  // .dev.vars (gitignored). ENVIRONMENT must NOT be "production" here, so the
+  // dev-admin bypass branch is reachable locally and structurally dead in prod.
+  "vars": {
+    "ENVIRONMENT": "development",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
+
+  "env": {
+    "production": {
+      // Never expose the Worker on *.workers.dev — Access only fronts the custom
+      // domain, so a workers.dev origin would be an unauthenticated back door.
+      "workers_dev": false,
+      "routes": [
+        { "pattern": "conduit.sqcode.dev", "custom_domain": true }
+      ],
+      "assets": {
+        "directory": "public",
+        "binding": "ASSETS",
+        "run_worker_first": ["/d/*", "/admin/api/*"]
+      },
+      "r2_buckets": [
+        { "binding": "BUCKET", "bucket_name": "conduit-blobs" }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "conduit-meta",
+          "database_id": "PLACEHOLDER_RUN_wrangler_d1_create_conduit-meta",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM_NAME",
+        "ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD_TAG"
+      }
+    }
+  }
+}
