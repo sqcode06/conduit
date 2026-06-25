@@ -83,3 +83,45 @@ export async function peekLink(
   if (!budgetLeft && !withinGrace) return { link, reason: 'spent' };
   return { link, reason: 'usable' };
 }
+
+// Single non-mutating query (link state + file metadata via JOIN) for HEAD. One
+// round-trip and no R2 access whether or not the token is usable, so HEAD timing
+// does not reveal link usability.
+export type HeadPeek =
+  | { usable: false }
+  | { usable: true; filename: string; contentType: string; size: number };
+
+export async function peekForHead(db: D1Database, rawToken: string): Promise<HeadPeek> {
+  const now = nowSeconds();
+  const tokenHash = await hashToken(rawToken);
+  const row = await db
+    .prepare(
+      `SELECT l.max_downloads, l.download_count, l.grace_seconds, l.first_download_at,
+              l.expires_at, l.revoked_at, f.filename, f.content_type, f.size_bytes
+       FROM links l LEFT JOIN files f ON f.id = l.file_id
+       WHERE l.token_hash = ?1`,
+    )
+    .bind(tokenHash)
+    .first<{
+      max_downloads: number;
+      download_count: number;
+      grace_seconds: number;
+      first_download_at: number | null;
+      expires_at: number | null;
+      revoked_at: number | null;
+      filename: string | null;
+      content_type: string | null;
+      size_bytes: number | null;
+    }>();
+  if (!row) return { usable: false };
+  if (row.revoked_at !== null) return { usable: false };
+  if (row.expires_at !== null && row.expires_at <= now) return { usable: false };
+  const budgetLeft = row.download_count < row.max_downloads;
+  const withinGrace =
+    row.first_download_at !== null && now < row.first_download_at + row.grace_seconds;
+  if (!budgetLeft && !withinGrace) return { usable: false };
+  if (row.filename === null || row.content_type === null || row.size_bytes === null) {
+    return { usable: false };
+  }
+  return { usable: true, filename: row.filename, contentType: row.content_type, size: row.size_bytes };
+}

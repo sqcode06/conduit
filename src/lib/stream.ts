@@ -77,7 +77,23 @@ function baseHeaders(obj: R2Object, meta: FileMeta): Headers {
   headers.set('Last-Modified', obj.uploaded.toUTCString());
   headers.set('Cache-Control', 'private, no-store');
   headers.set('X-Content-Type-Options', 'nosniff');
+  // Never send the capability token to an external origin via Referer.
+  headers.set('Referrer-Policy', 'no-referrer');
   return headers;
+}
+
+// HEAD response built from stored metadata only (no R2 round-trip), so HEAD timing
+// is independent of whether the object would be fetched.
+export function headResponse(meta: FileMeta, size: number): Response {
+  const headers = new Headers();
+  headers.set('Content-Type', meta.contentType || 'application/octet-stream');
+  headers.set('Content-Disposition', contentDisposition(meta.filename));
+  headers.set('Content-Length', String(size));
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Cache-Control', 'private, no-store');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Referrer-Policy', 'no-referrer');
+  return new Response(null, { status: 200, headers });
 }
 
 // Returns null when the R2 object is missing (route renders the unavailable page).
@@ -114,6 +130,8 @@ export async function buildDownloadResponse(
       headers.set('Content-Range', `bytes */${head.size}`);
       headers.set('Accept-Ranges', 'bytes');
       headers.set('Content-Length', '0');
+      headers.set('Referrer-Policy', 'no-referrer');
+      headers.set('X-Content-Type-Options', 'nosniff');
       return {
         response: new Response(null, { status: 416, headers }),
         status: 416,

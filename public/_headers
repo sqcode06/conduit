@@ -1,0 +1,12 @@
+# Security headers for static assets (Workers Static Assets honors this file).
+# Worker-served routes (/d/*, /admin/api/*) set their own headers in code.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+/admin/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff

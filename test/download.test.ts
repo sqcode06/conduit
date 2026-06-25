@@ -16,6 +16,7 @@ describe('GET /d/:token — single-use capability download', () => {
     expect(first.status).toBe(200);
     expect(first.headers.get('Content-Disposition')).toContain('attachment');
     expect(first.headers.get('Accept-Ranges')).toBe('bytes');
+    expect(first.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(await first.text()).toBe('payload-A');
 
     const second = await SELF.fetch(`${BASE}/d/${token}`);
@@ -26,6 +27,7 @@ describe('GET /d/:token — single-use capability download', () => {
   it('treats an unknown token as unavailable (never 403/404)', async () => {
     const res = await SELF.fetch(`${BASE}/d/this-token-does-not-exist`);
     expect(res.status).toBe(200);
+    expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(await res.text()).toContain('no longer available');
   });
 

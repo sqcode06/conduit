@@ -45,6 +45,7 @@ export function unavailableResponse(): Response {
       'Cache-Control': 'no-store',
       'X-Robots-Tag': 'noindex, nofollow',
       'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
     },
   });
 }
