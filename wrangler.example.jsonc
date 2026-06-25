@@ -1,3 +1,8 @@
+// Template — copy to wrangler.jsonc and fill in the <...> placeholders.
+//   cp wrangler.example.jsonc wrangler.jsonc
+// Your real wrangler.jsonc is gitignored (it holds account-specific ids). Get the
+// values from: `wrangler d1 create conduit-meta` (database_id) and your Cloudflare
+// Access application (team name + AUD tag).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "conduit",
@@ -12,8 +17,6 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    // Only the API and the download path invoke the Worker. The admin UI under
-    // /admin/ (non-/api) is a static asset gated by Cloudflare Access at the edge.
     "run_worker_first": ["/d/*", "/admin/api/*"]
   },
 
@@ -25,7 +28,7 @@
     {
       "binding": "DB",
       "database_name": "conduit-meta",
-      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create_conduit-meta",
+      "database_id": "<your-d1-database-id>",
       "migrations_dir": "migrations"
     }
   ],
@@ -45,7 +48,7 @@
       // domain, so a workers.dev origin would be an unauthenticated back door.
       "workers_dev": false,
       "routes": [
-        { "pattern": "conduit.sqcode.dev", "custom_domain": true }
+        { "pattern": "<your-domain>", "custom_domain": true }
       ],
       "assets": {
         "directory": "public",
@@ -59,14 +62,14 @@
         {
           "binding": "DB",
           "database_name": "conduit-meta",
-          "database_id": "PLACEHOLDER_RUN_wrangler_d1_create_conduit-meta",
+          "database_id": "<your-d1-database-id>",
           "migrations_dir": "migrations"
         }
       ],
       "vars": {
         "ENVIRONMENT": "production",
-        "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_TEAM_NAME",
-        "ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD_TAG"
+        "ACCESS_TEAM_DOMAIN": "<your-team-name>",
+        "ACCESS_AUD": "<your-access-aud-tag>"
       }
     }
   }

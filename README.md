@@ -60,8 +60,9 @@ one-use link can never both succeed.
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars     # sets DEV_ADMIN_BYPASS=true for local admin access
-npm run db:migrate:local           # apply migrations to the local D1
+cp wrangler.example.jsonc wrangler.jsonc   # your local config (gitignored)
+cp .dev.vars.example .dev.vars             # sets DEV_ADMIN_BYPASS=true for local admin access
+npm run db:migrate:local                   # apply migrations to the local D1
 npm run dev                        # wrangler dev → http://localhost:8787
 ```
 
@@ -83,13 +84,16 @@ npm run typecheck
 You need a Cloudflare account with the `sqcode.dev` zone, R2, and D1 enabled.
 
 ```bash
-# 1. Create the resources
+# 1. Create your config from the template (real wrangler.jsonc is gitignored)
+cp wrangler.example.jsonc wrangler.jsonc
+
+# 2. Create the resources
 npx wrangler r2 bucket create conduit-blobs
 npx wrangler d1 create conduit-meta      # copy the printed database_id ...
 
-# 2. Paste database_id into wrangler.jsonc (both the top-level and [env.production] d1 block)
+# 3. Fill wrangler.jsonc: database_id (both d1 blocks) + your domain in [env.production].routes
 
-# 3. Apply migrations to the remote DB
+# 4. Apply migrations to the remote DB
 npm run db:migrate:remote
 ```
 

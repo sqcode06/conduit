@@ -7,3 +7,11 @@ dist/
 *.log
 .DS_Store
 coverage/
+.env
+.env.*
+!.env.example
+deploy.sh
+
+# Account-specific config + generated types — committed as wrangler.example.jsonc.
+wrangler.jsonc
+worker-configuration.d.ts
