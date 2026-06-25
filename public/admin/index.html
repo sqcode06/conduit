@@ -29,7 +29,7 @@
           <input type="file" id="file-input" hidden />
           <div class="drop-mark" aria-hidden="true">&#8595;</div>
           <p class="drop-title">Drop a file to distill into a link</p>
-          <p class="drop-sub mono dim">click or drop &middot; single PUT &middot; max 100&nbsp;MB</p>
+          <p class="drop-sub mono dim" id="drop-sub">click or drop &middot; single file up to 1&nbsp;GB</p>
         </div>
         <div class="upload-progress" id="upload-progress" hidden>
           <div class="upload-bar" id="upload-bar">0%</div>
@@ -39,8 +39,9 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Files</h2>
-          <span class="mono dim panel-hint">name &middot; size &middot; age &middot; links</span>
+          <span class="mono dim usage-text" id="usage-text" title="Storage used">—</span>
         </div>
+        <div class="usage-bar" aria-hidden="true"><span class="usage-fill" id="usage-fill"></span></div>
         <table class="ftable">
           <thead>
             <tr>
@@ -118,8 +119,16 @@
       <div class="url-row">
         <input id="mint-url" class="mono" readonly spellcheck="false" />
         <button type="button" class="btn btn--accent" id="mint-copy">Copy</button>
+        <button type="button" class="btn btn--ghost" id="mint-qr-btn" title="Show a QR code for this link">QR</button>
       </div>
       <p id="mint-meta" class="mono dim mint-meta"></p>
+      <div id="mint-qr" class="mint-qr" hidden>
+        <canvas id="mint-qr-canvas" width="240" height="240" aria-label="QR code for the link"></canvas>
+        <div class="mint-qr-actions">
+          <button type="button" class="btn btn--ghost" id="qr-download">Download</button>
+          <button type="button" class="btn btn--ghost" id="qr-copy">Copy image</button>
+        </div>
+      </div>
       <footer class="modal-foot">
         <button type="button" class="btn btn--ghost" id="mint-again">Mint another</button>
         <button type="button" class="btn btn--accent" onclick="this.closest('dialog').close()">Done</button>
@@ -128,6 +137,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="qrcode.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
