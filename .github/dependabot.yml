@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Worker package (repo root)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      worker-deps:
+        patterns: ['*']
+
+  # CLI package
+  - package-ecosystem: npm
+    directory: /cli
+    schedule:
+      interval: weekly
+    groups:
+      cli-deps:
+        patterns: ['*']
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

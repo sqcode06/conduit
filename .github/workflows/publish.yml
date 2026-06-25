@@ -1,0 +1,34 @@
+name: Publish CLI
+
+# Publishes @sqcode/conduit to npm when you publish a GitHub Release.
+# Requires a repository secret named NPM_TOKEN (an npm automation/publish token).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # lets npm attach build provenance
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+      - run: npm ci
+      - run: npm test
+      # `prepublishOnly` builds the bin; --provenance adds a verified supply-chain
+      # attestation; --access public is required for a scoped public package.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
