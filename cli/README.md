@@ -1,13 +1,13 @@
 # @sqcode/conduit
 
-The command-line client for [CONDUIT](https://conduit.sqcode.dev) — upload a file
-and hand someone a single-use download link, straight from your terminal.
+The command-line client for [CONDUIT](https://github.com/sqcode06/conduit) — upload
+a file and hand someone a single-use download link, straight from your terminal.
 
 ```
 $ conduit push report.pdf --expires 24h
 ✓ report.pdf (2.1 MB) → link ready
 
-  https://conduit.sqcode.dev/d/9f3c…b21a
+  https://conduit.example.com/d/9f3c…b21a
   max 1  ·  expires in 24h
 
 ✓ copied to clipboard
@@ -37,7 +37,7 @@ CONDUIT's admin API sits behind Cloudflare Access, so the CLI authenticates with
    ```bash
    conduit login
    # or non-interactively:
-   conduit login --endpoint https://conduit.sqcode.dev \
+   conduit login --endpoint https://conduit.example.com \
      --client-id <id>.access --client-secret <secret>
    ```
 

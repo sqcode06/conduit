@@ -1,7 +1,8 @@
 # Contributing to CONDUIT
 
-Thanks for your interest. CONDUIT is a single-operator secure file-exchange tool
-(a Cloudflare Worker, plus a CLI). Contributions are welcome.
+Thanks for your interest. CONDUIT is a self-hostable, single-use secure file-exchange
+tool: a Cloudflare Worker backed by R2, D1, and Cloudflare Access, plus a CLI.
+Contributions are welcome.
 
 ## Ground rules
 
