@@ -90,6 +90,17 @@ export class ConduitClient {
     } catch (e) {
       throw new ApiError(`cannot reach ${this.base}${path} — ${(e as Error).message}`, 0);
     }
+    // Cloudflare Access rejected the request and redirected to its login page instead
+    // of passing through to the Worker. Surface a useful message, not a JSON error.
+    if (res.redirected && /cloudflareaccess\.com/i.test(res.url)) {
+      throw new ApiError(
+        'Cloudflare Access did not accept the service token (it redirected to login). ' +
+          'Add a "Service Auth" policy that includes this token to the Access application, ' +
+          'and double-check the endpoint.',
+        res.status,
+        true,
+      );
+    }
     if (res.status === 401 || res.status === 403) {
       throw new ApiError(
         'access denied — check your service token and that the Access policy allows it',
@@ -105,6 +116,15 @@ export class ConduitClient {
         /* non-JSON body */
       }
       throw new ApiError(detail, res.status);
+    }
+    if ((res.headers.get('content-type') || '').includes('text/html')) {
+      throw new ApiError(
+        'expected JSON but got an HTML page — usually the Cloudflare Access login, ' +
+          'meaning the service token was not accepted. Check the endpoint and the ' +
+          'Access "Service Auth" policy.',
+        res.status,
+        true,
+      );
     }
     return res;
   }
