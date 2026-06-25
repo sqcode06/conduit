@@ -1,7 +1,7 @@
 import { loadConfig, configPath } from '../config';
 import { ConduitClient, ApiError } from '../api';
 import { color, glyph } from '../ui';
-import { EXIT } from '../util';
+import { EXIT, formatSize } from '../util';
 
 export async function doctor(): Promise<void> {
   const cfg = loadConfig();
@@ -23,8 +23,16 @@ export async function doctor(): Promise<void> {
 
   if (cfg.endpoint) {
     try {
-      const who = await new ConduitClient(cfg).whoami();
+      const client = new ConduitClient(cfg);
+      const who = await client.whoami();
       console.log(`${glyph.ok} auth       ${color.dim(`authenticated as ${who.identity}`)}`);
+      const u = await client.usage();
+      const pct = u.total_limit ? Math.round((u.used_bytes / u.total_limit) * 100) : 0;
+      console.log(
+        `${glyph.ok} storage    ${color.dim(
+          `${formatSize(u.used_bytes)} / ${formatSize(u.total_limit)} (${pct}%) · ${u.count} file(s)`,
+        )}`,
+      );
     } catch (e) {
       console.log(`${glyph.err} auth       ${color.dim((e as ApiError).message)}`);
       allOk = false;

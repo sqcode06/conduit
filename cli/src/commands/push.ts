@@ -33,7 +33,9 @@ export async function push(file: string, flags: PushFlags): Promise<void> {
 
   let uploaded: FileRow;
   try {
-    uploaded = await client.upload(file);
+    uploaded = await client.upload(file, (done, total) => {
+      s?.message(`Uploading ${basename(file)}… ${Math.round((done / total) * 100)}%`);
+    });
   } catch (e) {
     s?.stop('Upload failed');
     const err = e as ApiError;

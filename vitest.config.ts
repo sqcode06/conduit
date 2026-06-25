@@ -19,6 +19,8 @@ export default defineConfig({
           // covered separately in access.test.ts with explicit env.
           DEV_ADMIN_BYPASS: 'true',
           DEV_ADMIN_EMAIL: 'test@conduit.dev',
+          // 5 MiB parts (R2's minimum) so the multipart test stays small.
+          UPLOAD_PART_SIZE: '5242880',
         },
       },
     }),

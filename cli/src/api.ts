@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat, open } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import type { Config } from './config';
+import { formatSize } from './util';
 
 export class ApiError extends Error {
   constructor(
@@ -49,7 +50,15 @@ export interface MintOptions {
   expiresInSeconds?: number | null;
 }
 
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+export interface Usage {
+  used_bytes: number;
+  total_limit: number;
+  file_limit: number;
+  part_size: number;
+  count: number;
+}
+
+export type UploadProgress = (done: number, total: number) => void;
 
 export class ConduitClient {
   private readonly base: string;
@@ -133,18 +142,104 @@ export class ConduitClient {
     return res.json() as Promise<MintResult>;
   }
 
-  async upload(path: string): Promise<FileRow> {
-    const data = await readFile(path);
-    if (data.byteLength > MAX_UPLOAD_BYTES) {
-      throw new ApiError(`file is larger than the 100 MB limit (${data.byteLength} bytes)`, 0);
+  async usage(): Promise<Usage> {
+    return (await this.request('/usage')).json() as Promise<Usage>;
+  }
+
+  // Routes to a single PUT for small files, or chunked R2 multipart for large ones.
+  async upload(path: string, onProgress?: UploadProgress): Promise<FileRow> {
+    const { size } = await stat(path);
+    const usage = await this.usage();
+    if (size > usage.file_limit) {
+      throw new ApiError(
+        `file is ${formatSize(size)}, over the ${formatSize(usage.file_limit)} per-file limit`,
+        0,
+      );
     }
+    if (usage.used_bytes + size > usage.total_limit) {
+      throw new ApiError(
+        `not enough storage — ${formatSize(usage.total_limit - usage.used_bytes)} free`,
+        0,
+      );
+    }
+    return size <= usage.part_size
+      ? this.uploadSingle(path)
+      : this.uploadMultipart(path, size, usage.part_size, onProgress);
+  }
+
+  private async uploadSingle(path: string): Promise<FileRow> {
     const name = basename(path);
+    const data = await readFile(path);
     const res = await this.request('/files', {
       method: 'POST',
       headers: { 'Content-Type': mimeFor(name), 'X-Filename': encodeURIComponent(name) },
       body: new Uint8Array(data),
     });
     return res.json() as Promise<FileRow>;
+  }
+
+  private async uploadMultipart(
+    path: string,
+    size: number,
+    fallbackPartSize: number,
+    onProgress?: UploadProgress,
+  ): Promise<FileRow> {
+    const name = basename(path);
+    const contentType = mimeFor(name);
+    const init = (await (
+      await this.request('/uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: name, content_type: contentType, size }),
+      })
+    ).json()) as { file_id: string; key: string; upload_id: string; part_size: number };
+
+    const partSize = init.part_size || fallbackPartSize;
+    const fh = await open(path, 'r');
+    const parts: Array<{ part_number: number; etag: string }> = [];
+    try {
+      const buf = Buffer.allocUnsafe(partSize);
+      let done = 0;
+      let partNumber = 1;
+      for (let off = 0; off < size; off += partSize) {
+        const len = Math.min(partSize, size - off);
+        const { bytesRead } = await fh.read(buf, 0, len, off);
+        const res = (await (
+          await this.request(
+            `/uploads/parts?key=${encodeURIComponent(init.key)}` +
+              `&upload_id=${encodeURIComponent(init.upload_id)}&part=${partNumber}`,
+            { method: 'PUT', body: new Uint8Array(buf.subarray(0, bytesRead)) },
+          )
+        ).json()) as { part_number: number; etag: string };
+        parts.push(res);
+        done += bytesRead;
+        onProgress?.(done, size);
+        partNumber++;
+      }
+      return (await (
+        await this.request('/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_id: init.file_id,
+            key: init.key,
+            upload_id: init.upload_id,
+            filename: name,
+            content_type: contentType,
+            parts,
+          }),
+        })
+      ).json()) as FileRow;
+    } catch (e) {
+      await this.request('/uploads/abort', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: init.key, upload_id: init.upload_id }),
+      }).catch(() => {});
+      throw e;
+    } finally {
+      await fh.close();
+    }
   }
 }
 

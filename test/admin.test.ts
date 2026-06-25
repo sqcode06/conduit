@@ -14,6 +14,88 @@ describe('admin API', () => {
     expect(who.identity).toBe('test@conduit.dev');
   });
 
+  it('reports usage limits and rejects an over-limit file', async () => {
+    const u = await readJson<{
+      used_bytes: number;
+      total_limit: number;
+      file_limit: number;
+      part_size: number;
+    }>(await SELF.fetch(`${API}/usage`));
+    expect(u.file_limit).toBe(1024 ** 3); // 1 GiB
+    expect(u.total_limit).toBe(10 * 1024 ** 3); // 10 GiB
+    expect(u.part_size).toBe(5 * 1024 * 1024); // test override
+
+    const tooBig = await SELF.fetch(`${API}/uploads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: 'huge.bin', size: 2 * 1024 ** 3 }),
+    });
+    expect(tooBig.status).toBe(413);
+  });
+
+  it('uploads a large file via multipart and serves it intact', async () => {
+    const total = 5 * 1024 * 1024 + 1024 * 1024; // 6 MiB -> 2 parts (5 MiB + 1 MiB)
+    const data = new Uint8Array(total);
+    for (let i = 0; i < total; i++) data[i] = i % 251;
+
+    const init = await readJson<{
+      file_id: string;
+      key: string;
+      upload_id: string;
+      part_size: number;
+    }>(
+      await SELF.fetch(`${API}/uploads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'big.bin', content_type: 'application/octet-stream', size: total }),
+      }),
+    );
+
+    const parts: Array<{ part_number: number; etag: string }> = [];
+    let n = 1;
+    for (let off = 0; off < total; off += init.part_size) {
+      const chunk = data.subarray(off, Math.min(off + init.part_size, total));
+      const r = await SELF.fetch(
+        `${API}/uploads/parts?key=${encodeURIComponent(init.key)}&upload_id=${encodeURIComponent(init.upload_id)}&part=${n}`,
+        { method: 'PUT', body: chunk },
+      );
+      expect(r.status).toBe(200);
+      parts.push(await readJson<{ part_number: number; etag: string }>(r));
+      n++;
+    }
+    expect(parts.length).toBe(2);
+
+    const file = await readJson<{ id: string; size: number }>(
+      await SELF.fetch(`${API}/uploads/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: init.file_id,
+          key: init.key,
+          upload_id: init.upload_id,
+          filename: 'big.bin',
+          content_type: 'application/octet-stream',
+          parts,
+        }),
+      }),
+    );
+    expect(file.size).toBe(total);
+
+    const link = await readJson<{ url: string }>(
+      await SELF.fetch(`${API}/files/${file.id}/links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_downloads: 1, grace_seconds: 60 }),
+      }),
+    );
+    const dl = await SELF.fetch(link.url);
+    expect(dl.status).toBe(200);
+    const got = new Uint8Array(await dl.arrayBuffer());
+    expect(got.length).toBe(total);
+    expect(got[0]).toBe(data[0]);
+    expect(got[total - 1]).toBe(data[total - 1]);
+  });
+
   it('uploads, lists, mints, downloads once, and logs the pull', async () => {
     const up = await SELF.fetch(`${API}/files`, {
       method: 'POST',

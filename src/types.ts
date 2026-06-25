@@ -9,6 +9,8 @@ export interface Bindings {
   ENVIRONMENT?: string;
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
+  // Optional override for the multipart part size in bytes (tests use a tiny value).
+  UPLOAD_PART_SIZE?: string;
   // Dev-only, from .dev.vars (never a production secret):
   DEV_ADMIN_BYPASS?: string;
   DEV_ADMIN_EMAIL?: string;
