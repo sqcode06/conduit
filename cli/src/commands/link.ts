@@ -31,7 +31,8 @@ export async function link(fileRef: string, flags: LinkFlags): Promise<void> {
   try {
     minted = await client.mintLink(file.id, { maxDownloads, graceSeconds, expiresInSeconds });
   } catch (e) {
-    die((e as ApiError).message, EXIT.RUNTIME);
+    const err = e as ApiError;
+    die(err.message, err.auth ? EXIT.AUTH : EXIT.RUNTIME);
   }
 
   if (flags.json) {

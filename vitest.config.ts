@@ -5,12 +5,16 @@ import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-worker
 // isolated in-memory D1 of each test worker. (Passed in as a binding because the
 // setup file runs inside the Workers runtime, not here.)
 const migrations = await readD1Migrations('./migrations');
+const runtimeEnv = (
+  globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }
+).process?.env;
+const wranglerConfigPath = runtimeEnv?.CONDUIT_TEST_WRANGLER_CONFIG ?? './wrangler.jsonc';
 
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      // Bindings (DB, BUCKET, ASSETS, vars) are taken from wrangler.jsonc.
-      wrangler: { configPath: './wrangler.jsonc' },
+      // Bindings (DB, BUCKET, ASSETS, vars) are taken from the selected Wrangler config.
+      wrangler: { configPath: wranglerConfigPath },
       miniflare: {
         bindings: {
           TEST_MIGRATIONS: migrations,

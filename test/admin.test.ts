@@ -9,9 +9,11 @@ describe('admin API', () => {
   it('whoami returns the verified identity', async () => {
     const r = await SELF.fetch(`${API}/whoami`);
     expect(r.status).toBe(200);
-    const who = await readJson<{ ok: boolean; identity: string }>(r);
+    const who = await readJson<{ ok: boolean; identity: string; api_version: number }>(r);
     expect(who.ok).toBe(true);
     expect(who.identity).toBe('test@conduit.dev');
+    expect(who.api_version).toBe(1);
+    expect(r.headers.get('X-Conduit-Api-Version')).toBe('1');
   });
 
   it('reports usage limits and rejects an over-limit file', async () => {

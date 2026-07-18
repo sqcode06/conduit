@@ -13,8 +13,17 @@ export function getClient(): ConduitClient {
   }
 }
 
-// Resolve a file by exact id, exact name, or unambiguous id prefix.
-export async function resolveFile(client: ConduitClient, ref: string): Promise<FileRow> {
+export interface ResolveFileOptions {
+  allowIdPrefix?: boolean;
+}
+
+// Resolve a file by exact id or exact name. Non-destructive callers may opt into
+// unambiguous id prefixes; destructive commands must require an exact reference.
+export async function resolveFile(
+  client: ConduitClient,
+  ref: string,
+  options: ResolveFileOptions = {},
+): Promise<FileRow> {
   let files: FileRow[];
   try {
     files = await client.listFiles();
@@ -29,6 +38,10 @@ export async function resolveFile(client: ConduitClient, ref: string): Promise<F
   const byName = files.filter((f) => f.name === ref);
   if (byName.length === 1) return byName[0];
   if (byName.length > 1) die(`multiple files named "${ref}" — use the file id (\`conduit ls\`)`, EXIT.USAGE);
+
+  if (options.allowIdPrefix === false) {
+    die(`no exact file matching "${ref}" (see \`conduit ls\`)`, EXIT.USAGE);
+  }
 
   const byPrefix = files.filter((f) => f.id.startsWith(ref));
   if (byPrefix.length === 1) return byPrefix[0];

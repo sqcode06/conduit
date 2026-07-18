@@ -1,0 +1,4 @@
+interface:
+  display_name: "Conduit Release Gate"
+  short_description: "Prove CLI and Worker release readiness"
+  default_prompt: "Use $conduit-release-gate to audit this Conduit release candidate and report whether it is safe to publish."

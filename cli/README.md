@@ -3,6 +3,13 @@
 The command-line client for [CONDUIT](https://github.com/sqcode06/conduit) — upload
 a file and hand someone a single-use download link, straight from your terminal.
 
+This package is **not a standalone file service**. It requires a compatible,
+self-hosted CONDUIT Worker deployed in your Cloudflare account. If you do not already
+run one, follow [Deploy your own](https://github.com/sqcode06/conduit#deploy-your-own)
+before configuring the CLI. Match package and Worker release versions:
+`@sqcode/conduit@0.1.0` is paired with Worker tag `v0.1.0`; the CLI refuses an
+incompatible server API.
+
 ```
 $ conduit push report.pdf --expires 24h
 ✓ report.pdf (2.1 MB) → link ready
@@ -21,7 +28,7 @@ npm install -g @sqcode/conduit
 npx @sqcode/conduit --help
 ```
 
-Requires Node ≥ 20.
+Requires Node ≥ 20.12.
 
 ## Setup
 
@@ -38,8 +45,12 @@ CONDUIT's admin API sits behind Cloudflare Access, so the CLI authenticates with
    conduit login
    # or non-interactively:
    conduit login --endpoint https://conduit.example.com \
-     --client-id <id>.access --client-secret <secret>
+     --client-id <id>.access --client-secret-stdin
    ```
+
+   Pipe the secret over standard input when scripting, for example
+   `printf '%s' "$CONDUIT_SECRET" | conduit login ... --client-secret-stdin`.
+   Avoid putting long-lived secrets directly in command arguments or shell history.
 
 4. Verify:
 

@@ -4,11 +4,16 @@ import { requireAccess } from '../lib/access';
 import { generateToken, hashToken, nowSeconds } from '../lib/tokens';
 import { sanitizeFilename, sanitizeContentType } from '../lib/sanitize';
 import { MAX_FILE_BYTES, MAX_TOTAL_BYTES, getPartSize, fmtBytes } from '../lib/limits';
+import { API_VERSION } from '../lib/api-version';
 
 // Admin API. Every route is gated by Cloudflare Access at the edge AND re-verified
 // in-Worker by requireAccess() (deny-by-default). Mounted at /admin/api in index.ts.
 export const admin = new Hono<AppEnv>();
 admin.use('*', requireAccess());
+admin.use('*', async (c, next) => {
+  await next();
+  c.header('X-Conduit-Api-Version', String(API_VERSION));
+});
 
 function isoFromSeconds(s: number): string {
   return new Date(s * 1000).toISOString();
@@ -61,7 +66,12 @@ async function insertFile(
 
 // GET /admin/api/whoami — identity check for the CLI (login / doctor).
 admin.get('/whoami', (c) =>
-  c.json({ ok: true, identity: c.get('adminEmail'), via_bypass: c.get('adminViaBypass') }),
+  c.json({
+    ok: true,
+    identity: c.get('adminEmail'),
+    via_bypass: c.get('adminViaBypass'),
+    api_version: API_VERSION,
+  }),
 );
 
 // GET /admin/api/usage — storage usage + the limits (drives client UX).
