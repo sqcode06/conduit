@@ -21,14 +21,14 @@
     "db:migrate:remote": "wrangler d1 migrations apply conduit-meta --remote --env production"
   },
   "dependencies": {
-    "hono": "^4.12.27",
+    "hono": "^4.12.31",
     "jose": "^6.2.3"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.19",
-    "@cloudflare/workers-types": "^4.20260601.0",
-    "typescript": "^5.7.0",
-    "vitest": "~4.1.9",
-    "wrangler": "^4.104.0"
+    "@cloudflare/vitest-pool-workers": "^0.18.6",
+    "@cloudflare/workers-types": "^5.20260719.1",
+    "typescript": "^7.0.2",
+    "vitest": "~4.1.10",
+    "wrangler": "^4.112.0"
   }
 }
