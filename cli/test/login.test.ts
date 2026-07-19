@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loginEndpointPrompt } from '../src/commands/login';
+import { clientSecretFromStdin, loginEndpointPrompt } from '../src/commands/login';
 
 describe('login endpoint prompt', () => {
   it('requires an explicit self-hosted endpoint for a clean configuration', () => {
@@ -16,5 +16,17 @@ describe('login endpoint prompt', () => {
     const prompt = loginEndpointPrompt({ endpoint: 'https://files.example.net' });
 
     expect(prompt.initialValue).toBe('https://files.example.net');
+  });
+});
+
+describe('client secret from stdin', () => {
+  it('accepts a non-empty secret and removes its trailing newline', () => {
+    expect(clientSecretFromStdin('secret-value\n')).toBe('secret-value');
+  });
+
+  it.each(['', '\n', '   \r\n'])('rejects empty input without falling back to a prompt', (input) => {
+    expect(() => clientSecretFromStdin(input)).toThrow(
+      'Access Client Secret from standard input must not be empty',
+    );
   });
 });

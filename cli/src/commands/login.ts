@@ -27,6 +27,12 @@ export function loginEndpointPrompt(current: Config) {
   };
 }
 
+export function clientSecretFromStdin(input: string): string {
+  const secret = input.trimEnd();
+  if (!secret) throw new Error('Access Client Secret from standard input must not be empty');
+  return secret;
+}
+
 export async function login(flags: LoginFlags): Promise<void> {
   const current = loadConfig();
   let endpoint = flags.endpoint;
@@ -50,7 +56,12 @@ export async function login(flags: LoginFlags): Promise<void> {
   }
 
   if (flags.clientSecretStdin) {
-    clientSecret = readFileSync(0, 'utf8').trimEnd();
+    const input = readFileSync(0, 'utf8');
+    try {
+      clientSecret = clientSecretFromStdin(input);
+    } catch (error) {
+      die((error as Error).message, EXIT.USAGE);
+    }
   }
 
   if (!clientId || !clientSecret) {
