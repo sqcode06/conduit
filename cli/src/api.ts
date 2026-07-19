@@ -27,6 +27,11 @@ export interface FileRow extends UploadedFile {
   link_count: number;
 }
 
+interface FilePage {
+  files: FileRow[];
+  next_cursor?: string | null;
+}
+
 export interface MintResult {
   token: string;
   url: string;
@@ -229,8 +234,56 @@ export class ConduitClient {
   }
 
   async listFiles(): Promise<FileRow[]> {
-    const { files } = (await (await this.request('/files')).json()) as { files: FileRow[] };
-    return files;
+    const pageLimit = 1000;
+    const files: FileRow[] = [];
+    const seenIds = new Set<string>();
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+
+    while (true) {
+      const query = new URLSearchParams({ limit: String(pageLimit) });
+      if (cursor) query.set('cursor', cursor);
+      const res = await this.request(`/files?${query}`);
+      const page = (await res.json().catch(() => null)) as FilePage | null;
+      if (!page || !Array.isArray(page.files) || page.files.length > pageLimit) {
+        throw new ApiError('CONDUIT server returned an invalid files response', res.status);
+      }
+      for (const file of page.files) {
+        if (
+          !file ||
+          typeof file.id !== 'string' ||
+          !file.id ||
+          typeof file.name !== 'string' ||
+          !Number.isSafeInteger(file.size) ||
+          file.size < 0 ||
+          typeof file.created_at !== 'string' ||
+          !Number.isSafeInteger(file.link_count) ||
+          file.link_count < 0 ||
+          seenIds.has(file.id)
+        ) {
+          throw new ApiError('CONDUIT server returned an invalid files response', res.status);
+        }
+        seenIds.add(file.id);
+        files.push(file);
+      }
+
+      if (page.next_cursor === null) return files;
+      if (page.next_cursor === undefined) {
+        if (page.files.length === pageLimit) {
+          throw new ApiError('CONDUIT server returned invalid file pagination', res.status);
+        }
+        return files;
+      }
+      if (
+        typeof page.next_cursor !== 'string' ||
+        !page.next_cursor ||
+        seenCursors.has(page.next_cursor)
+      ) {
+        throw new ApiError('CONDUIT server returned invalid file pagination', res.status);
+      }
+      seenCursors.add(page.next_cursor);
+      cursor = page.next_cursor;
+    }
   }
 
   async listDownloads(limit = 25): Promise<DownloadRow[]> {

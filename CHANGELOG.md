@@ -6,7 +6,7 @@ All notable changes to CONDUIT are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-06-25
+## [0.1.0] - 2026-07-19
 
 Initial release: a single-use file-exchange Worker, an admin dashboard, and a CLI.
 

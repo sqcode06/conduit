@@ -66,7 +66,7 @@ function toast(msg, kind = "ok") {
 async function loadFiles() {
   const tbody = $("#files-body");
   try {
-    const { files } = await api("/files");
+    const files = await listAllFiles();
     tbody.replaceChildren();
     if (!files.length) {
       tbody.append(el("tr", {}, el("td", { className: "empty", colSpan: 5 },
@@ -78,6 +78,33 @@ async function loadFiles() {
     tbody.replaceChildren(el("tr", {}, el("td", { className: "empty", colSpan: 5 },
       `Could not load files — ${e.message}`)));
   }
+}
+
+async function listAllFiles() {
+  const pageLimit = 1000;
+  const files = [];
+  const seenCursors = new Set();
+  let cursor = null;
+  do {
+    const query = new URLSearchParams({ limit: String(pageLimit) });
+    if (cursor) query.set("cursor", cursor);
+    const page = await api(`/files?${query}`);
+    if (!page || !Array.isArray(page.files) || page.files.length > pageLimit) {
+      throw new Error("invalid files response");
+    }
+    files.push(...page.files);
+    if (page.next_cursor === null) return files;
+    if (page.next_cursor === undefined) {
+      if (page.files.length === pageLimit) throw new Error("invalid file pagination");
+      return files;
+    }
+    if (typeof page.next_cursor !== "string" || !page.next_cursor || seenCursors.has(page.next_cursor)) {
+      throw new Error("invalid file pagination");
+    }
+    seenCursors.add(page.next_cursor);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return files;
 }
 
 function fileRow(f) {
