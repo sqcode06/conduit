@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SELF } from 'cloudflare:test';
-import { readJson, waitFor } from './helpers';
+import { readJson, seedFile, waitFor } from './helpers';
 
 // Dev bypass (set in vitest.config.ts) stands in for a Cloudflare Access session.
 const API = 'https://conduit.test/admin/api';
@@ -33,6 +33,43 @@ describe('admin API', () => {
       body: JSON.stringify({ filename: 'huge.bin', size: 2 * 1024 ** 3 }),
     });
     expect(tooBig.status).toBe(413);
+  });
+
+  it('paginates the complete file list without duplicates', async () => {
+    const seeded = await Promise.all([
+      seedFile({ filename: 'one.txt' }),
+      seedFile({ filename: 'two.txt' }),
+      seedFile({ filename: 'three.txt' }),
+    ]);
+
+    const firstResponse = await SELF.fetch(`${API}/files?limit=2`);
+    expect(firstResponse.status).toBe(200);
+    const first = await readJson<{
+      files: Array<{ id: string }>;
+      next_cursor: string | null;
+    }>(firstResponse);
+    expect(first.files).toHaveLength(2);
+    expect(first.next_cursor).toEqual(expect.any(String));
+
+    const secondResponse = await SELF.fetch(
+      `${API}/files?limit=2&cursor=${encodeURIComponent(first.next_cursor!)}`,
+    );
+    expect(secondResponse.status).toBe(200);
+    const second = await readJson<{
+      files: Array<{ id: string }>;
+      next_cursor: string | null;
+    }>(secondResponse);
+    expect(second.files).toHaveLength(1);
+    expect(second.next_cursor).toBeNull();
+
+    const listedIds = [...first.files, ...second.files].map((file) => file.id);
+    expect(new Set(listedIds).size).toBe(3);
+    expect(new Set(listedIds)).toEqual(new Set(seeded.map((file) => file.id)));
+
+    const invalid = await SELF.fetch(`${API}/files?cursor=not-a-cursor`);
+    expect(invalid.status).toBe(400);
+    const empty = await SELF.fetch(`${API}/files?cursor=`);
+    expect(empty.status).toBe(400);
   });
 
   it('uploads a large file via multipart and serves it intact', async () => {

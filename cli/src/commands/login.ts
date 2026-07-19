@@ -1,7 +1,7 @@
 import { intro, outro, text, password, isCancel, cancel, spinner } from '@clack/prompts';
 import { readFileSync } from 'node:fs';
 import { loadConfig, saveConfig, configPath, type Config } from '../config';
-import { ConduitClient, ApiError } from '../api';
+import { ConduitClient, ApiError, normalizeEndpoint } from '../api';
 import { color, ok, die } from '../ui';
 import { EXIT } from '../util';
 
@@ -11,25 +11,49 @@ export interface LoginFlags {
   clientSecretStdin?: boolean;
 }
 
+export function loginEndpointPrompt(current: Config) {
+  return {
+    message: 'Your self-hosted CONDUIT endpoint',
+    placeholder: 'https://conduit.example.com',
+    initialValue: current.endpoint ?? '',
+    validate: (value: string | undefined) => {
+      try {
+        normalizeEndpoint(value ?? '');
+        return undefined;
+      } catch (error) {
+        return (error as Error).message;
+      }
+    },
+  };
+}
+
 export async function login(flags: LoginFlags): Promise<void> {
   const current = loadConfig();
   let endpoint = flags.endpoint;
   let clientId = flags.clientId;
-  let clientSecret = flags.clientSecretStdin ? readFileSync(0, 'utf8').trimEnd() : undefined;
+  let clientSecret: string | undefined;
 
-  if (!endpoint || !clientId || !clientSecret) {
+  if (!endpoint || !clientId || !flags.clientSecretStdin) {
     intro(color.cyan('conduit login'));
 
     if (!endpoint) {
-      const v = await text({
-        message: 'CONDUIT endpoint',
-        placeholder: 'https://conduit.sqcode.dev',
-        initialValue: current.endpoint ?? 'https://conduit.sqcode.dev',
-        validate: (s) => (/^https?:\/\//.test(s ?? '') ? undefined : 'must start with http(s)://'),
-      });
+      const v = await text(loginEndpointPrompt(current));
       if (isCancel(v)) return cancelled();
       endpoint = v;
     }
+  }
+
+  try {
+    endpoint = normalizeEndpoint(endpoint ?? '');
+  } catch (error) {
+    die((error as Error).message, EXIT.USAGE);
+  }
+
+  if (flags.clientSecretStdin) {
+    clientSecret = readFileSync(0, 'utf8').trimEnd();
+  }
+
+  if (!clientId || !clientSecret) {
     if (!clientId) {
       const v = await text({
         message: 'Access Client ID',
@@ -47,7 +71,7 @@ export async function login(flags: LoginFlags): Promise<void> {
   }
 
   const cfg: Config = {
-    endpoint: endpoint.replace(/\/+$/, ''),
+    endpoint,
     accessClientId: clientId || undefined,
     accessClientSecret: clientSecret || undefined,
   };

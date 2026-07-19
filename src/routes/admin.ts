@@ -25,6 +25,34 @@ function clampInt(v: unknown, dflt: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+interface FileListRow {
+  id: string;
+  name: string;
+  size: number;
+  created_at: number;
+  link_count: number;
+}
+
+interface FileCursor {
+  createdAt: number;
+  id: string;
+}
+
+const FILE_ID_RE = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function parseFileCursor(value: string): FileCursor | null {
+  const separator = value.indexOf(':');
+  if (separator <= 0) return null;
+  const createdAt = Number(value.slice(0, separator));
+  const id = value.slice(separator + 1);
+  if (!Number.isSafeInteger(createdAt) || createdAt < 0 || !FILE_ID_RE.test(id)) return null;
+  return { createdAt, id };
+}
+
+function formatFileCursor(row: FileListRow): string {
+  return `${row.created_at}:${row.id}`;
+}
+
 // Total bytes currently stored (system of record for the 10 GiB cap).
 async function usedBytes(db: D1Database): Promise<number> {
   const row = await db
@@ -256,17 +284,33 @@ admin.post('/uploads/abort', async (c) => {
 // GET /admin/api/files — list with per-file live link count.
 admin.get('/files', async (c) => {
   const limit = clampInt(c.req.query('limit'), 500, 1, 1000);
-  const { results } = await c.env.DB.prepare(
-    `SELECT f.id, f.filename AS name, f.size_bytes AS size, f.created_at,
-            (SELECT COUNT(*) FROM links l WHERE l.file_id = f.id) AS link_count
-     FROM files f
-     ORDER BY f.created_at DESC
-     LIMIT ?1`,
-  )
-    .bind(limit)
-    .all<{ id: string; name: string; size: number; created_at: number; link_count: number }>();
-  const files = results.map((f) => ({ ...f, created_at: isoFromSeconds(f.created_at) }));
-  return c.json({ files });
+  const rawCursor = c.req.query('cursor');
+  const cursor = rawCursor === undefined ? null : parseFileCursor(rawCursor);
+  if (rawCursor !== undefined && !cursor) return c.json({ error: 'invalid file cursor' }, 400);
+
+  const select = `SELECT f.id, f.filename AS name, f.size_bytes AS size, f.created_at,
+                          (SELECT COUNT(*) FROM links l WHERE l.file_id = f.id) AS link_count
+                   FROM files f`;
+  const queryLimit = limit + 1;
+  const statement = cursor
+    ? c.env.DB.prepare(
+        `${select}
+         WHERE f.created_at < ?1 OR (f.created_at = ?1 AND f.id < ?2)
+         ORDER BY f.created_at DESC, f.id DESC
+         LIMIT ?3`,
+      ).bind(cursor.createdAt, cursor.id, queryLimit)
+    : c.env.DB.prepare(
+        `${select}
+         ORDER BY f.created_at DESC, f.id DESC
+         LIMIT ?1`,
+      ).bind(queryLimit);
+
+  const { results } = await statement.all<FileListRow>();
+  const page = results.slice(0, limit);
+  const files = page.map((f) => ({ ...f, created_at: isoFromSeconds(f.created_at) }));
+  const last = page.at(-1);
+  const next_cursor = results.length > limit && last ? formatFileCursor(last) : null;
+  return c.json({ files, next_cursor });
 });
 
 // DELETE /admin/api/files/:id — delete the blob and the record (cascades links).

@@ -102,6 +102,79 @@ describe('ConduitClient protocol checks', () => {
     await expect(client.whoami()).resolves.toMatchObject({ api_version: 1 });
   });
 
+  it('follows file-list cursors until every page is collected', async () => {
+    const firstId = '11111111-1111-4111-8111-111111111111';
+    const secondId = '22222222-2222-4222-8222-222222222222';
+    const cursor = `1760000000:${firstId}`;
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+      );
+      const requestedCursor = url.searchParams.get('cursor');
+      return Response.json(
+        requestedCursor
+          ? {
+              files: [
+                {
+                  id: secondId,
+                  name: 'second.txt',
+                  size: 2,
+                  created_at: '2026-07-18T00:00:00.000Z',
+                  link_count: 0,
+                },
+              ],
+              next_cursor: null,
+            }
+          : {
+              files: [
+                {
+                  id: firstId,
+                  name: 'first.txt',
+                  size: 1,
+                  created_at: '2026-07-19T00:00:00.000Z',
+                  link_count: 1,
+                },
+              ],
+              next_cursor: cursor,
+            },
+        { headers: { 'X-Conduit-Api-Version': '1' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new ConduitClient({ endpoint: 'https://conduit.example.com' });
+
+    await expect(client.listFiles()).resolves.toMatchObject([
+      { id: firstId },
+      { id: secondId },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondRequest = new URL(String(fetchMock.mock.calls[1]?.[0]));
+    expect(secondRequest.searchParams.get('cursor')).toBe(cursor);
+    expect(secondRequest.searchParams.get('limit')).toBe('1000');
+  });
+
+  it('accepts a short legacy file page but rejects a full page without a cursor', async () => {
+    const row = (index: number) => ({
+      id: `file-${index}`,
+      name: `file-${index}.txt`,
+      size: index,
+      created_at: '2026-07-19T00:00:00.000Z',
+      link_count: 0,
+    });
+    const versionedPage = (files: ReturnType<typeof row>[]) =>
+      Response.json({ files }, { headers: { 'X-Conduit-Api-Version': '1' } });
+    const client = new ConduitClient({ endpoint: 'https://conduit.example.com' });
+
+    vi.stubGlobal('fetch', vi.fn(async () => versionedPage([row(1)])));
+    await expect(client.listFiles()).resolves.toMatchObject([{ id: 'file-1' }]);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => versionedPage(Array.from({ length: 1000 }, (_, index) => row(index)))),
+    );
+    await expect(client.listFiles()).rejects.toThrow('invalid file pagination');
+  });
+
   it('rejects an invalid identity body even with a valid version header', async () => {
     vi.stubGlobal(
       'fetch',
