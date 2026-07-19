@@ -6,11 +6,12 @@ import { ApiError } from '../api';
 
 export interface RmFlags {
   yes?: boolean;
+  json?: boolean;
 }
 
 export async function rm(ref: string, flags: RmFlags): Promise<void> {
   const client = getClient();
-  const file = await resolveFile(client, ref);
+  const file = await resolveFile(client, ref, { allowIdPrefix: false });
 
   if (!flags.yes) {
     const sure = await confirm({
@@ -25,7 +26,12 @@ export async function rm(ref: string, flags: RmFlags): Promise<void> {
   try {
     await client.deleteFile(file.id);
   } catch (e) {
-    die((e as ApiError).message, EXIT.RUNTIME);
+    const err = e as ApiError;
+    die(err.message, err.auth ? EXIT.AUTH : EXIT.RUNTIME);
   }
-  ok(`Deleted ${color.cyan(file.name)} and revoked its links.`);
+  if (flags.json) {
+    console.log(JSON.stringify({ deleted: file }, null, 2));
+  } else {
+    ok(`Deleted ${color.cyan(file.name)} and revoked its links.`);
+  }
 }

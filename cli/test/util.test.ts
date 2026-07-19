@@ -8,6 +8,7 @@ describe('parseDuration', () => {
     expect(parseDuration('24h')).toBe(86400);
     expect(parseDuration('7d')).toBe(604800);
     expect(parseDuration('100')).toBe(100); // bare number = seconds
+    expect(parseDuration('365d')).toBe(31_536_000);
   });
 
   it('treats none/never/0 as no expiry', () => {
@@ -20,6 +21,9 @@ describe('parseDuration', () => {
     expect(() => parseDuration('soon')).toThrow();
     expect(() => parseDuration('5y')).toThrow();
     expect(() => parseDuration('')).toThrow();
+    expect(() => parseDuration('0s')).toThrow();
+    expect(() => parseDuration('366d')).toThrow();
+    expect(() => parseDuration('9'.repeat(400) + 's')).toThrow();
   });
 });
 

@@ -8,8 +8,7 @@ import { pulls } from './commands/pulls';
 import { rm } from './commands/rm';
 import { qr } from './commands/qr';
 import { menu } from './menu';
-
-const VERSION = '0.1.0';
+import { VERSION } from './version';
 
 const program = new Command();
 
@@ -23,9 +22,13 @@ program
   .description('configure the endpoint and Access service token')
   .option('--endpoint <url>', 'CONDUIT endpoint URL')
   .option('--client-id <id>', 'Access service token Client ID')
-  .option('--client-secret <secret>', 'Access service token Client Secret')
+  .option('--client-secret-stdin', 'read the Access Client Secret from standard input')
   .action((opts) =>
-    login({ endpoint: opts.endpoint, clientId: opts.clientId, clientSecret: opts.clientSecret }),
+    login({
+      endpoint: opts.endpoint,
+      clientId: opts.clientId,
+      clientSecretStdin: opts.clientSecretStdin,
+    }),
   );
 
 program
@@ -77,6 +80,7 @@ program
   .argument('<file>', 'file id or name')
   .description('delete a file and revoke its links')
   .option('-y, --yes', 'skip confirmation')
+  .option('--json', 'output JSON')
   .action((file, opts) => rm(file, opts));
 
 program

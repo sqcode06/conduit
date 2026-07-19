@@ -8,10 +8,29 @@ import type { AppEnv } from '../types';
 // signature + issuer + audience here. Deny-by-default: anything that does not
 // verify is 403.
 
-function teamOrigin(teamDomain: string): string {
-  const t = teamDomain.trim().replace(/\/+$/, '');
-  if (t.startsWith('http://') || t.startsWith('https://')) return t;
-  return `https://${t}.cloudflareaccess.com`;
+export function normalizeTeamOrigin(teamDomain: string): string | null {
+  const value = teamDomain.trim();
+  if (/^[a-z0-9-]+$/i.test(value)) return `https://${value}.cloudflareaccess.com`;
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    (url.pathname && url.pathname !== '/') ||
+    url.search ||
+    url.hash ||
+    !/^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(url.hostname)
+  ) {
+    return null;
+  }
+  return url.origin;
 }
 
 // One JWKS resolver per team URL, kept for the isolate's lifetime. createRemoteJWKSet
@@ -58,7 +77,8 @@ export function requireAccess(): MiddlewareHandler<AppEnv> {
     const token = c.req.header('Cf-Access-Jwt-Assertion');
     if (!token) return deny(c);
 
-    const origin = teamOrigin(env.ACCESS_TEAM_DOMAIN);
+    const origin = normalizeTeamOrigin(env.ACCESS_TEAM_DOMAIN);
+    if (!origin) return deny(c);
     try {
       const { payload } = await jwtVerify(token, getJwks(origin), {
         issuer: origin, // https://<team>.cloudflareaccess.com

@@ -1,4 +1,5 @@
 import { intro, outro, text, password, isCancel, cancel, spinner } from '@clack/prompts';
+import { readFileSync } from 'node:fs';
 import { loadConfig, saveConfig, configPath, type Config } from '../config';
 import { ConduitClient, ApiError } from '../api';
 import { color, ok, die } from '../ui';
@@ -7,14 +8,14 @@ import { EXIT } from '../util';
 export interface LoginFlags {
   endpoint?: string;
   clientId?: string;
-  clientSecret?: string;
+  clientSecretStdin?: boolean;
 }
 
 export async function login(flags: LoginFlags): Promise<void> {
   const current = loadConfig();
   let endpoint = flags.endpoint;
   let clientId = flags.clientId;
-  let clientSecret = flags.clientSecret;
+  let clientSecret = flags.clientSecretStdin ? readFileSync(0, 'utf8').trimEnd() : undefined;
 
   if (!endpoint || !clientId || !clientSecret) {
     intro(color.cyan('conduit login'));

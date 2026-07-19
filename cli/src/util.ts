@@ -7,6 +7,8 @@ export const EXIT = {
   AUTH: 3, // missing or invalid config / auth
 } as const;
 
+export const MAX_TTL_SECONDS = 365 * 24 * 60 * 60;
+
 // Parse a human duration into seconds. Accepts "30s", "15m", "24h", "7d", or
 // "none" / "never" / "0" -> null (no expiry). Throws on anything else.
 export function parseDuration(input: string): number | null {
@@ -17,7 +19,11 @@ export function parseDuration(input: string): number | null {
   const n = Number(m[1]);
   const unit = m[2] ?? 's';
   const mult = unit === 's' ? 1 : unit === 'm' ? 60 : unit === 'h' ? 3600 : 86400;
-  return n * mult;
+  const seconds = n * mult;
+  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > MAX_TTL_SECONDS) {
+    throw new Error(`duration must be between 1s and 365d, or none`);
+  }
+  return seconds;
 }
 
 export function formatSize(bytes: number | null | undefined): string {

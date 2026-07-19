@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { requireAccess } from '../src/lib/access';
+import { normalizeTeamOrigin, requireAccess } from '../src/lib/access';
 import type { AppEnv } from '../src/types';
 
 // Unit-test the Access guard in isolation by injecting env via app.request(). These
@@ -13,6 +13,26 @@ function app() {
 }
 
 const cfg = { ACCESS_TEAM_DOMAIN: 'team', ACCESS_AUD: 'aud' };
+
+describe('normalizeTeamOrigin', () => {
+  it('accepts a team slug or canonical HTTPS Access origin', () => {
+    expect(normalizeTeamOrigin('team-name')).toBe('https://team-name.cloudflareaccess.com');
+    expect(normalizeTeamOrigin('https://team-name.cloudflareaccess.com/')).toBe(
+      'https://team-name.cloudflareaccess.com',
+    );
+  });
+
+  it.each([
+    'http://team.cloudflareaccess.com',
+    'https://team.cloudflareaccess.com.evil.test',
+    'https://team.cloudflareaccess.com:444',
+    'https://team.cloudflareaccess.com/path',
+    'https://user@team.cloudflareaccess.com',
+    'team.cloudflareaccess.com',
+  ])('rejects a non-canonical Access origin: %s', (value) => {
+    expect(normalizeTeamOrigin(value)).toBeNull();
+  });
+});
 
 describe('requireAccess (deny-by-default)', () => {
   it('authorizes via the dev bypass in non-production', async () => {

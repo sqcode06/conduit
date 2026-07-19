@@ -90,13 +90,16 @@ You need a Cloudflare account with a domain on Cloudflare (an active zone), plus
 D1 enabled.
 
 ```bash
-git clone https://github.com/sqcode06/conduit && cd conduit
+git clone --branch v0.1.0 --depth 1 https://github.com/sqcode06/conduit && cd conduit
 npm install
 cp wrangler.example.jsonc wrangler.jsonc     # gitignored; holds your account ids
 
 npx wrangler r2 bucket create conduit-blobs
 npx wrangler d1 create conduit-meta          # copy the printed database_id
 ```
+
+Use the Worker tag matching the installed CLI version: `@sqcode/conduit@0.1.0`
+is paired with Worker tag `v0.1.0`. The CLI rejects an incompatible server API.
 
 Fill in `wrangler.jsonc`: the `database_id` (in both `d1_databases` blocks) and your
 domain in `[env.production].routes`. Then apply the schema:
@@ -165,6 +168,9 @@ conduit pulls --watch                         # live download feed
 ```
 
 Full command set in [`cli/README.md`](./cli/README.md).
+
+The CLI and Worker are one versioned contract. Install the CLI for a compatible
+self-hosted CONDUIT Worker; it is not a standalone file-transfer service.
 
 ## Project layout
 

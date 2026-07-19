@@ -1,4 +1,5 @@
-import { readFile, stat, open } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
+import type { BigIntStats } from 'node:fs';
 import { basename, extname } from 'node:path';
 import type { Config } from './config';
 import { formatSize } from './util';
@@ -8,17 +9,21 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly auth = false,
+    readonly usage = false,
   ) {
     super(message);
     this.name = 'ApiError';
   }
 }
 
-export interface FileRow {
+export interface UploadedFile {
   id: string;
   name: string;
   size: number;
   created_at: string;
+}
+
+export interface FileRow extends UploadedFile {
   link_count: number;
 }
 
@@ -42,6 +47,7 @@ export interface WhoAmI {
   ok: boolean;
   identity: string;
   via_bypass: boolean;
+  api_version: number;
 }
 
 export interface MintOptions {
@@ -58,16 +64,72 @@ export interface Usage {
   count: number;
 }
 
+interface MultipartInit {
+  file_id: string;
+  key: string;
+  upload_id: string;
+  part_size: number;
+}
+
 export type UploadProgress = (done: number, total: number) => void;
+
+export const SUPPORTED_API_VERSION = '1';
+
+function sameFileSnapshot(before: BigIntStats, after: BigIntStats): boolean {
+  return (
+    before.dev === after.dev &&
+    before.ino === after.ino &&
+    before.size === after.size &&
+    before.mtimeNs === after.mtimeNs &&
+    before.ctimeNs === after.ctimeNs
+  );
+}
+
+function isLoopback(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]'
+  );
+}
+
+export function normalizeEndpoint(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ApiError('endpoint must be a valid URL', 0, true);
+  }
+
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback(url.hostname))) {
+    throw new ApiError('endpoint must use HTTPS (HTTP is allowed only for local development)', 0, true);
+  }
+  if (url.username || url.password) {
+    throw new ApiError('endpoint must not contain embedded credentials', 0, true);
+  }
+  if ((url.pathname && url.pathname !== '/') || url.search || url.hash) {
+    throw new ApiError('endpoint must be an origin only, without a path, query, or fragment', 0, true);
+  }
+  return url.origin;
+}
 
 export class ConduitClient {
   private readonly base: string;
+  private readonly origin: string;
 
   constructor(private readonly cfg: Config) {
     if (!cfg.endpoint) {
       throw new ApiError('No endpoint configured. Run `conduit login`.', 0, true);
     }
-    this.base = cfg.endpoint.replace(/\/+$/, '') + '/admin/api';
+    this.origin = normalizeEndpoint(cfg.endpoint);
+    if (
+      this.origin.startsWith('http:') &&
+      (this.cfg.accessClientId || this.cfg.accessClientSecret)
+    ) {
+      throw new ApiError('Access service tokens may not be sent over HTTP, including loopback', 0, true);
+    }
+    this.base = this.origin + '/admin/api';
   }
 
   private buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -86,20 +148,34 @@ export class ConduitClient {
       res = await fetch(this.base + path, {
         ...init,
         headers: this.buildHeaders(init.headers as Record<string, string>),
+        // Never forward Access service-token headers to a redirect target.
+        redirect: 'manual',
       });
     } catch (e) {
       throw new ApiError(`cannot reach ${this.base}${path} — ${(e as Error).message}`, 0);
     }
-    // Cloudflare Access rejected the request and redirected to its login page instead
-    // of passing through to the Worker. Surface a useful message, not a JSON error.
-    if (res.redirected && /cloudflareaccess\.com/i.test(res.url)) {
-      throw new ApiError(
-        'Cloudflare Access did not accept the service token (it redirected to login). ' +
-          'Add a "Service Auth" policy that includes this token to the Access application, ' +
-          'and double-check the endpoint.',
-        res.status,
-        true,
-      );
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      let accessRedirect = false;
+      if (location) {
+        try {
+          accessRedirect = /(^|\.)cloudflareaccess\.com$/i.test(
+            new URL(location, this.base).hostname,
+          );
+        } catch {
+          /* malformed redirect is handled as a generic redirect below */
+        }
+      }
+      if (accessRedirect) {
+        throw new ApiError(
+          'Cloudflare Access did not accept the service token (it redirected to login). ' +
+            'Add a "Service Auth" policy that includes this token to the Access application, ' +
+            'and double-check the endpoint.',
+          res.status,
+          true,
+        );
+      }
+      throw new ApiError('endpoint returned an unexpected redirect; check the configured origin', res.status);
     }
     if (res.status === 401 || res.status === 403) {
       throw new ApiError(
@@ -126,11 +202,30 @@ export class ConduitClient {
         true,
       );
     }
+    const apiVersion = res.headers.get('X-Conduit-Api-Version');
+    if (apiVersion !== SUPPORTED_API_VERSION) {
+      throw new ApiError(
+        `incompatible CONDUIT server API (expected ${SUPPORTED_API_VERSION}, got ${apiVersion ?? 'none'})`,
+        res.status,
+      );
+    }
     return res;
   }
 
   async whoami(): Promise<WhoAmI> {
-    return (await this.request('/whoami')).json() as Promise<WhoAmI>;
+    const res = await this.request('/whoami');
+    const value = (await res.json().catch(() => null)) as Partial<WhoAmI> | null;
+    if (
+      !value ||
+      value.ok !== true ||
+      typeof value.identity !== 'string' ||
+      !value.identity.trim() ||
+      typeof value.via_bypass !== 'boolean' ||
+      value.api_version !== Number(SUPPORTED_API_VERSION)
+    ) {
+      throw new ApiError('CONDUIT server returned an invalid identity response', res.status);
+    }
+    return value as WhoAmI;
   }
 
   async listFiles(): Promise<FileRow[]> {
@@ -159,71 +254,179 @@ export class ConduitClient {
         expires_in_seconds: opts.expiresInSeconds ?? null,
       }),
     });
-    return res.json() as Promise<MintResult>;
+    const value = (await res.json().catch(() => null)) as Partial<MintResult> | null;
+    if (
+      !value ||
+      typeof value.token !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(value.token) ||
+      typeof value.url !== 'string' ||
+      !Number.isInteger(value.max_downloads) ||
+      !Number.isInteger(value.grace_seconds) ||
+      (value.expires_at !== null && typeof value.expires_at !== 'string')
+    ) {
+      throw new ApiError('CONDUIT server returned an invalid link response', res.status);
+    }
+    let link: URL;
+    try {
+      link = new URL(value.url);
+    } catch {
+      throw new ApiError('CONDUIT server returned an invalid link URL', res.status);
+    }
+    if (
+      link.origin !== this.origin ||
+      link.pathname !== `/d/${value.token}` ||
+      link.search ||
+      link.hash
+    ) {
+      throw new ApiError('CONDUIT server returned a link outside the configured origin', res.status);
+    }
+    return value as MintResult;
   }
 
   async usage(): Promise<Usage> {
-    return (await this.request('/usage')).json() as Promise<Usage>;
+    const res = await this.request('/usage');
+    const value = (await res.json().catch(() => null)) as Partial<Usage> | null;
+    const usedBytes = value?.used_bytes;
+    const totalLimit = value?.total_limit;
+    const fileLimit = value?.file_limit;
+    const partSize = value?.part_size;
+    const count = value?.count;
+    if (
+      typeof usedBytes !== 'number' ||
+      !Number.isSafeInteger(usedBytes) ||
+      usedBytes < 0 ||
+      typeof totalLimit !== 'number' ||
+      !Number.isSafeInteger(totalLimit) ||
+      totalLimit < usedBytes ||
+      typeof fileLimit !== 'number' ||
+      !Number.isSafeInteger(fileLimit) ||
+      fileLimit < 1 ||
+      typeof partSize !== 'number' ||
+      !Number.isSafeInteger(partSize) ||
+      partSize < 5 * 1024 * 1024 ||
+      partSize > fileLimit ||
+      typeof count !== 'number' ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new ApiError('CONDUIT server returned invalid storage limits', res.status);
+    }
+    return {
+      used_bytes: usedBytes,
+      total_limit: totalLimit,
+      file_limit: fileLimit,
+      part_size: partSize,
+      count,
+    };
   }
 
   // Routes to a single PUT for small files, or chunked R2 multipart for large ones.
-  async upload(path: string, onProgress?: UploadProgress): Promise<FileRow> {
-    const { size } = await stat(path);
-    const usage = await this.usage();
-    if (size > usage.file_limit) {
-      throw new ApiError(
-        `file is ${formatSize(size)}, over the ${formatSize(usage.file_limit)} per-file limit`,
-        0,
+  async upload(path: string, onProgress?: UploadProgress): Promise<UploadedFile> {
+    const fh = await open(path, 'r');
+    try {
+      const initialSnapshot = await fh.stat({ bigint: true });
+      if (!initialSnapshot.isFile() || initialSnapshot.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new ApiError('upload path must be a regular file', 0, false, true);
+      }
+      const size = Number(initialSnapshot.size);
+      const usage = await this.usage();
+      if (size > usage.file_limit) {
+        throw new ApiError(
+          `file is ${formatSize(size)}, over the ${formatSize(usage.file_limit)} per-file limit`,
+          0,
+          false,
+          true,
+        );
+      }
+      if (usage.used_bytes + size > usage.total_limit) {
+        throw new ApiError(
+          `not enough storage — ${formatSize(usage.total_limit - usage.used_bytes)} free`,
+          0,
+          false,
+          true,
+        );
+      }
+      if (size <= usage.part_size) {
+        return await this.uploadSingle(path, fh, initialSnapshot);
+      }
+      return await this.uploadMultipart(
+        path,
+        size,
+        usage.part_size,
+        fh,
+        initialSnapshot,
+        onProgress,
       );
+    } finally {
+      await fh.close();
     }
-    if (usage.used_bytes + size > usage.total_limit) {
-      throw new ApiError(
-        `not enough storage — ${formatSize(usage.total_limit - usage.used_bytes)} free`,
-        0,
-      );
-    }
-    return size <= usage.part_size
-      ? this.uploadSingle(path)
-      : this.uploadMultipart(path, size, usage.part_size, onProgress);
   }
 
-  private async uploadSingle(path: string): Promise<FileRow> {
+  private async uploadSingle(
+    path: string,
+    fh: FileHandle,
+    initialSnapshot: BigIntStats,
+  ): Promise<UploadedFile> {
     const name = basename(path);
-    const data = await readFile(path);
+    const data = await fh.readFile();
+    const finalSnapshot = await fh.stat({ bigint: true });
+    if (
+      BigInt(data.byteLength) !== initialSnapshot.size ||
+      !sameFileSnapshot(initialSnapshot, finalSnapshot)
+    ) {
+      throw new ApiError('file changed while it was being uploaded', 0);
+    }
     const res = await this.request('/files', {
       method: 'POST',
       headers: { 'Content-Type': mimeFor(name), 'X-Filename': encodeURIComponent(name) },
       body: new Uint8Array(data),
     });
-    return res.json() as Promise<FileRow>;
+    return res.json() as Promise<UploadedFile>;
   }
 
   private async uploadMultipart(
     path: string,
     size: number,
     fallbackPartSize: number,
+    fh: FileHandle,
+    initialSnapshot: BigIntStats,
     onProgress?: UploadProgress,
-  ): Promise<FileRow> {
+  ): Promise<UploadedFile> {
     const name = basename(path);
     const contentType = mimeFor(name);
-    const init = (await (
-      await this.request('/uploads', {
+    let init: MultipartInit | null = null;
+    const parts: Array<{ part_number: number; etag: string }> = [];
+    try {
+      const initRes = await this.request('/uploads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: name, content_type: contentType, size }),
-      })
-    ).json()) as { file_id: string; key: string; upload_id: string; part_size: number };
-
-    const partSize = init.part_size || fallbackPartSize;
-    const fh = await open(path, 'r');
-    const parts: Array<{ part_number: number; etag: string }> = [];
-    try {
+      });
+      const initValue = (await initRes.json().catch(() => null)) as Partial<MultipartInit> | null;
+      if (
+        !initValue ||
+        typeof initValue.file_id !== 'string' ||
+        !/^[0-9a-f-]{36}$/i.test(initValue.file_id) ||
+        typeof initValue.key !== 'string' ||
+        initValue.key !== `blobs/${initValue.file_id}` ||
+        typeof initValue.upload_id !== 'string' ||
+        !initValue.upload_id ||
+        typeof initValue.part_size !== 'number' ||
+        !Number.isSafeInteger(initValue.part_size) ||
+        initValue.part_size < 5 * 1024 * 1024 ||
+        initValue.part_size > fallbackPartSize
+      ) {
+        throw new ApiError('CONDUIT server returned an invalid multipart response', initRes.status);
+      }
+      init = initValue as MultipartInit;
+      const partSize = init.part_size;
       const buf = Buffer.allocUnsafe(partSize);
       let done = 0;
       let partNumber = 1;
       for (let off = 0; off < size; off += partSize) {
         const len = Math.min(partSize, size - off);
         const { bytesRead } = await fh.read(buf, 0, len, off);
+        if (bytesRead !== len) throw new ApiError('file changed while it was being uploaded', 0);
         const res = (await (
           await this.request(
             `/uploads/parts?key=${encodeURIComponent(init.key)}` +
@@ -235,6 +438,10 @@ export class ConduitClient {
         done += bytesRead;
         onProgress?.(done, size);
         partNumber++;
+      }
+      const finalSnapshot = await fh.stat({ bigint: true });
+      if (!sameFileSnapshot(initialSnapshot, finalSnapshot)) {
+        throw new ApiError('file changed while it was being uploaded', 0);
       }
       return (await (
         await this.request('/uploads/complete', {
@@ -249,16 +456,16 @@ export class ConduitClient {
             parts,
           }),
         })
-      ).json()) as FileRow;
+      ).json()) as UploadedFile;
     } catch (e) {
-      await this.request('/uploads/abort', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: init.key, upload_id: init.upload_id }),
-      }).catch(() => {});
+      if (init) {
+        await this.request('/uploads/abort', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: init.key, upload_id: init.upload_id }),
+        }).catch(() => {});
+      }
       throw e;
-    } finally {
-      await fh.close();
     }
   }
 }

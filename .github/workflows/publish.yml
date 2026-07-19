@@ -1,34 +1,35 @@
 name: Publish CLI
 
-# Publishes @sqcode/conduit to npm when you publish a GitHub Release.
-# Requires a repository secret named NPM_TOKEN (an npm automation/publish token).
+# Publishes the exact tested @sqcode/conduit tarball when a GitHub Release is published.
+# The first release uses a short-lived granular NPM_TOKEN with publish permission and
+# 2FA bypass to bootstrap the package. Migrate to npm trusted publishing immediately
+# afterward, remove the secret, and revoke the token.
 on:
   release:
     types: [published]
 
 permissions:
   contents: read
-  id-token: write # lets npm attach build provenance
+  id-token: write
 
 jobs:
   publish:
-    name: npm publish
+    name: Verify and publish npm tarball
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cli
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: npm
-          cache-dependency-path: cli/package-lock.json
-      - run: npm ci
-      - run: npm test
-      # `prepublishOnly` builds the bin; --provenance adds a verified supply-chain
-      # attestation; --access public is required for a scoped public package.
-      - run: npm publish --provenance --access public
+          package-manager-cache: false
+      - run: npm ci --engine-strict
+      - run: npm ci --engine-strict --prefix cli
+      - run: cp wrangler.example.jsonc wrangler.jsonc
+      - run: npx wrangler types
+      - name: Build and test the release tarball
+        run: npm run release:check -- --artifact-dir "$RUNNER_TEMP/conduit-release"
+      - name: Publish the tested tarball
+        run: npm publish "$RUNNER_TEMP"/conduit-release/*.tgz --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

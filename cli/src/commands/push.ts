@@ -4,7 +4,7 @@ import { getClient } from '../client';
 import { presentLink } from '../link-output';
 import { color, ok, die } from '../ui';
 import { EXIT, parseDuration, formatSize } from '../util';
-import { ApiError, type FileRow, type MintResult } from '../api';
+import { ApiError, type UploadedFile, type MintResult } from '../api';
 
 export interface PushFlags {
   expires: string;
@@ -14,6 +14,20 @@ export interface PushFlags {
   link?: boolean; // --no-link => false
   copy?: boolean; // --no-copy => false
   qr?: boolean;
+}
+
+const FILE_INPUT_ERROR_CODES = new Set(['EACCES', 'EISDIR', 'ENOENT', 'EPERM']);
+
+export function uploadErrorExit(error: unknown): number {
+  if (error instanceof ApiError) {
+    if (error.auth) return EXIT.AUTH;
+    return error.usage ? EXIT.USAGE : EXIT.RUNTIME;
+  }
+  const code =
+    error instanceof Error && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined;
+  return code && FILE_INPUT_ERROR_CODES.has(code) ? EXIT.USAGE : EXIT.RUNTIME;
 }
 
 export async function push(file: string, flags: PushFlags): Promise<void> {
@@ -31,15 +45,14 @@ export async function push(file: string, flags: PushFlags): Promise<void> {
   const s = flags.json ? null : spinner();
   s?.start(`Uploading ${basename(file)}…`);
 
-  let uploaded: FileRow;
+  let uploaded: UploadedFile;
   try {
     uploaded = await client.upload(file, (done, total) => {
       s?.message(`Uploading ${basename(file)}… ${Math.round((done / total) * 100)}%`);
     });
   } catch (e) {
     s?.stop('Upload failed');
-    const err = e as ApiError;
-    die(err.message, err.auth ? EXIT.AUTH : err.status === 0 ? EXIT.USAGE : EXIT.RUNTIME);
+    die(e instanceof Error ? e.message : String(e), uploadErrorExit(e));
   }
 
   if (flags.link === false) {
@@ -58,7 +71,8 @@ export async function push(file: string, flags: PushFlags): Promise<void> {
     minted = await client.mintLink(uploaded.id, { maxDownloads, graceSeconds, expiresInSeconds });
   } catch (e) {
     s?.stop('Mint failed');
-    die((e as ApiError).message, EXIT.RUNTIME);
+    const err = e as ApiError;
+    die(err.message, err.auth ? EXIT.AUTH : EXIT.RUNTIME);
   }
   s?.stop(`${color.cyan(uploaded.name)} (${formatSize(uploaded.size)}) ${color.dim('→')} link ready`);
 
