@@ -1,7 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api';
-import { uploadErrorExit } from '../src/commands/push';
 import { EXIT } from '../src/util';
+
+const { uploadMock } = vi.hoisted(() => ({ uploadMock: vi.fn() }));
+
+vi.mock('../src/client', () => ({
+  getClient: () => ({ upload: uploadMock }),
+}));
+
+vi.mock('@clack/prompts', () => ({
+  spinner: () => ({ start() {}, message() {}, stop() {} }),
+}));
+
+vi.mock('../src/ui', () => ({
+  color: { cyan: (value: string) => value, dim: (value: string) => value },
+  ok() {},
+  die(message: string, code = 1): never {
+    throw Object.assign(new Error(message), { exitCode: code });
+  },
+}));
+
+import { push, uploadErrorExit } from '../src/commands/push';
 
 describe('uploadErrorExit', () => {
   it('keeps network failures distinct from usage errors', () => {
@@ -17,5 +36,18 @@ describe('uploadErrorExit', () => {
     const missing = Object.assign(new Error('missing'), { code: 'ENOENT' });
     expect(uploadErrorExit(missing)).toBe(EXIT.USAGE);
     expect(uploadErrorExit(new Error('disk I/O failed'))).toBe(EXIT.RUNTIME);
+  });
+});
+
+describe('push', () => {
+  it('preserves a useful message when upload rejects with a non-Error value', async () => {
+    uploadMock.mockRejectedValueOnce('backend rejected the upload');
+
+    await expect(
+      push('payload.bin', { expires: '1h', max: '1', grace: '0' }),
+    ).rejects.toMatchObject({
+      message: 'backend rejected the upload',
+      exitCode: EXIT.RUNTIME,
+    });
   });
 });

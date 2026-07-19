@@ -13,6 +13,7 @@ describe('normalizeEndpoint', () => {
     expect(normalizeEndpoint('https://conduit.example.com/')).toBe('https://conduit.example.com');
     expect(normalizeEndpoint('http://127.0.0.1:8787')).toBe('http://127.0.0.1:8787');
     expect(normalizeEndpoint('http://localhost:8787/')).toBe('http://localhost:8787');
+    expect(normalizeEndpoint('http://[::1]:8787')).toBe('http://[::1]:8787');
   });
 
   it.each([
@@ -66,6 +67,24 @@ describe('ConduitClient protocol checks', () => {
     const client = new ConduitClient({ endpoint: 'https://conduit.example.com' });
 
     await expect(client.whoami()).rejects.toThrow('expected 1, got 2');
+  });
+
+  it('reports an HTML response before checking for an API version header', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('<!doctype html><title>Cloudflare Access</title>', {
+          headers: { 'Content-Type': 'text/html; charset=UTF-8' },
+        }),
+      ),
+    );
+    const client = new ConduitClient({ endpoint: 'https://conduit.example.com' });
+
+    await expect(client.whoami()).rejects.toMatchObject({
+      message: expect.stringContaining('expected JSON but got an HTML page'),
+      auth: true,
+      status: 200,
+    });
   });
 
   it('accepts the supported API version', async () => {

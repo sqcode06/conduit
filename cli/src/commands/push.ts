@@ -52,8 +52,7 @@ export async function push(file: string, flags: PushFlags): Promise<void> {
     });
   } catch (e) {
     s?.stop('Upload failed');
-    const err = e as Error;
-    die(err.message, uploadErrorExit(e));
+    die(e instanceof Error ? e.message : String(e), uploadErrorExit(e));
   }
 
   if (flags.link === false) {

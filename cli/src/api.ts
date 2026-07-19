@@ -193,13 +193,6 @@ export class ConduitClient {
       }
       throw new ApiError(detail, res.status);
     }
-    const apiVersion = res.headers.get('X-Conduit-Api-Version');
-    if (apiVersion !== SUPPORTED_API_VERSION) {
-      throw new ApiError(
-        `incompatible CONDUIT server API (expected ${SUPPORTED_API_VERSION}, got ${apiVersion ?? 'none'})`,
-        res.status,
-      );
-    }
     if ((res.headers.get('content-type') || '').includes('text/html')) {
       throw new ApiError(
         'expected JSON but got an HTML page — usually the Cloudflare Access login, ' +
@@ -207,6 +200,13 @@ export class ConduitClient {
           'Access "Service Auth" policy.',
         res.status,
         true,
+      );
+    }
+    const apiVersion = res.headers.get('X-Conduit-Api-Version');
+    if (apiVersion !== SUPPORTED_API_VERSION) {
+      throw new ApiError(
+        `incompatible CONDUIT server API (expected ${SUPPORTED_API_VERSION}, got ${apiVersion ?? 'none'})`,
+        res.status,
       );
     }
     return res;
